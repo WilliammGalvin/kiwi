@@ -1,114 +1,63 @@
 package main
 
 import (
-	"encoding/csv"
-	"path/filepath"
+	"flag"
 	"fmt"
-	"os"
+	"log"
 	"time"
-	"net"
-	"strings"
+
+	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/data"
+	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/reader"
 )
 
-var preloadCount = 10
-var entryCounts = make(map[string]int)
-var stockData = make(map[string][][]string)  
-
-func fetchEntries(sourceDir string, symbol string, fetchCount int) {
-	path := filepath.Join(sourceDir, symbol + ".csv")
-
-	file, err := os.Open(path)
-	if err != nil {
-		panic(err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(file)
-	
-	// Skips to next line (terribly inefficient)
-	for i := 0; i < entryCounts[symbol]; i++ {
-		_, err := reader.Read()
-		if err != nil {
-			return
-		}
-	}
-
-	for i := 0; i < fetchCount; i++ {
-		record, err := reader.Read()
-		if err != nil {
-			break
-		}
-
-		stockData[symbol] = append(stockData[symbol], record)
-		entryCounts[symbol]++
-	}
-}
-
-func gatherStockSymbols(source string) {
-	entries, err := os.ReadDir(source)
-	if err != nil {
-		panic(err)
-	}
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		ext := filepath.Ext(name)
-		symbol := name[:len(name) - len(ext)]
-
-		if ext != ".csv" {
-			continue
-		}
-
-		stockData[symbol] = [][]string{}
-	}
+var VerifiedCSVBarHeaders = []string{
+	"Date", "Close", "Last", "Volume", "Open", "High", "Low",
 }
 
 func main() {
-	dataPath := "../../data/"
-	serverAddr := "localhost:8080"
+	dataDirPath := flag.String("dataDir", "./data", "Path to data directory")
+	interval := flag.Int("interval", 1000, "Broadcast interval delay in ms")
+	flag.Parse()
 
-	conn, err := net.Dial("tcp", serverAddr)
+	broadcastIntervalMs := time.Duration(*interval) * time.Millisecond
+	fmt.Printf("Broadcasting at a rate of %v\n", broadcastIntervalMs)
+
+	dataManager, err := data.NewDataManager(*dataDirPath)
 	if err != nil {
-		panic(fmt.Sprintf("Failed to connect to server: %v", err))
-	}
-	defer conn.Close()
-	fmt.Printf("Connected to %s\n", serverAddr)
-	
-	gatherStockSymbols(dataPath)
-	for range preloadCount {
-		for sym := range stockData {
-			fetchEntries(dataPath, sym, 1)
-		}
+		log.Fatalf("Error initializing data manager: %v\n", err)
 	}
 
-	for {
-		for sym := range stockData {
-			if len(stockData[sym]) < preloadCount {
-				fetchEntries(dataPath, sym, preloadCount - len(stockData[sym]))
+	symbols, err := dataManager.CollectSymbols()
+	if err != nil {
+		log.Fatalf("Error collecting symbols: %v\n", err)
+	}
 
-				if len(stockData[sym]) <= 0 {
-					delete(stockData, sym)
-					continue
-				}
-			}
-
-			front := stockData[sym][0]
-
-			packet := fmt.Sprintf("%s,%s\n", sym, strings.Join(front, ","))
-			_, err := conn.Write([]byte(packet))
-			if err != nil {
-				fmt.Printf("Failed to send data: %v\n", err)
-				return
-			}
-
-			fmt.Printf("Sent: %s", packet)
-			stockData[sym] = stockData[sym][1:]
+	readers := []reader.CSVReader{}
+	for _, sym := range symbols {
+		if !dataManager.HasSymbol(sym) {
+			continue
 		}
 
-		time.Sleep(time.Second)
-	}	
+		symPath := dataManager.GetSymbolPath(sym)
+		reader := reader.NewCSVReader(symPath)
+		err := reader.OpenFile()
+		if err != nil {
+			continue
+		}
+
+		reader.ReadHeaders()
+		reader.VerifyHeaders(VerifiedCSVBarHeaders)
+		readers = append(readers, *reader)
+	}
+
+	fmt.Println("Stocks loaded:")
+	for i, sym := range symbols {
+		fmt.Printf("%v. %s\n", i+1, sym)
+	}
+
+	defer func() {
+		for _, reader := range readers {
+			reader.CloseFile()
+		}
+	}()
 }
