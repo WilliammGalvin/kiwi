@@ -2,16 +2,16 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"time"
 
 	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/data"
+	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/engine"
 	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/reader"
 )
 
 var VerifiedCSVBarHeaders = []string{
-	"Date", "Close", "Last", "Volume", "Open", "High", "Low",
+	"Date", "Close/Last", "Volume", "Open", "High", "Low",
 }
 
 func main() {
@@ -20,7 +20,7 @@ func main() {
 	flag.Parse()
 
 	broadcastIntervalMs := time.Duration(*interval) * time.Millisecond
-	fmt.Printf("Broadcasting at a rate of %v\n", broadcastIntervalMs)
+	log.Printf("Broadcasting at a rate of %v\n", broadcastIntervalMs)
 
 	dataManager, err := data.NewDataManager(*dataDirPath)
 	if err != nil {
@@ -32,27 +32,33 @@ func main() {
 		log.Fatalf("Error collecting symbols: %v\n", err)
 	}
 
-	readers := []reader.CSVReader{}
+	readers := make(map[string]*reader.CSVReader)
 	for _, sym := range symbols {
-		if !dataManager.HasSymbol(sym) {
-			continue
-		}
-
 		symPath := dataManager.GetSymbolPath(sym)
-		reader := reader.NewCSVReader(symPath)
-		err := reader.OpenFile()
-		if err != nil {
+		r := reader.NewCSVReader(symPath)
+
+		if err := r.OpenFile(); err != nil {
 			continue
 		}
 
-		reader.ReadHeaders()
-		reader.VerifyHeaders(VerifiedCSVBarHeaders)
-		readers = append(readers, *reader)
+		if _, err := r.ReadHeaders(); err != nil {
+			r.CloseFile()
+			continue
+		}
+
+		if !r.VerifyHeaders(VerifiedCSVBarHeaders) {
+			r.CloseFile()
+			continue
+		}
+
+		readers[sym] = r
 	}
 
-	fmt.Println("Stocks loaded:")
-	for i, sym := range symbols {
-		fmt.Printf("%v. %s\n", i+1, sym)
+	log.Println("Stocks loaded:")
+	i := 1
+	for sym := range readers {
+		log.Printf("%v. %s\n", i, sym)
+		i++
 	}
 
 	defer func() {
@@ -60,4 +66,8 @@ func main() {
 			reader.CloseFile()
 		}
 	}()
+
+	broadcastEngine := engine.NewBroadcastEngine(broadcastIntervalMs, readers)
+	broadcastEngine.Start()
+	defer broadcastEngine.Shutdown()
 }

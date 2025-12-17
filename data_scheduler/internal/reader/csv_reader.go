@@ -3,6 +3,7 @@ package reader
 import (
 	"encoding/csv"
 	"fmt"
+	"log"
 	"os"
 )
 
@@ -11,9 +12,9 @@ type CSVReader struct {
 	Headers       []string
 	Delimiter     rune
 	HasReachedEOF bool
+	Index         int
 	file          *os.File
 	csvReader     *csv.Reader
-	index         int
 }
 
 func NewCSVReader(filePath string) *CSVReader {
@@ -21,7 +22,7 @@ func NewCSVReader(filePath string) *CSVReader {
 		FilePath:      filePath,
 		Delimiter:     ',',
 		HasReachedEOF: false,
-		index:         0,
+		Index:         0,
 	}
 }
 
@@ -30,7 +31,7 @@ func NewCSVReaderWithDelimiter(filePath string, delimiter rune) *CSVReader {
 		FilePath:      filePath,
 		Delimiter:     delimiter,
 		HasReachedEOF: false,
-		index:         0,
+		Index:         0,
 	}
 }
 
@@ -61,7 +62,7 @@ func (reader *CSVReader) ReadHeaders() ([]string, error) {
 	}
 
 	reader.Headers = headers
-	reader.index++
+	reader.Index++
 	return headers, nil
 }
 
@@ -82,6 +83,7 @@ func (reader *CSVReader) VerifyHeaders(validHeaders []string) bool {
 	for _, s := range reader.Headers {
 		counts[s]--
 		if counts[s] < 0 {
+			log.Printf("Symbol %s didn't match\n", s)
 			return false
 		}
 	}
@@ -104,6 +106,6 @@ func (reader *CSVReader) ReadRow() ([]string, error) {
 		return nil, err
 	}
 
-	reader.index++
+	reader.Index++
 	return record, nil
 }
