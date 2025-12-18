@@ -58,27 +58,28 @@ func (engine *SchedulerEngine) parseBarPacketFromCSVRow(row []string) (*models.B
 	high_str := row[4]
 	low_str := row[5]
 
-	timestamp_i64, err := strconv.ParseInt(timestamp_str, 10, 64)
+	time, err := time.Parse("01/02/2006", timestamp_str)
+	if err != nil {
+		return nil, err
+	}
+	timestamp_i64 := time.Unix()
+
+	open_f64, err := strconv.ParseFloat(open_str[1:], 64)
 	if err != nil {
 		return nil, err
 	}
 
-	open_f64, err := strconv.ParseFloat(open_str, 64)
+	close_f64, err := strconv.ParseFloat(close_str[1:], 64)
 	if err != nil {
 		return nil, err
 	}
 
-	close_f64, err := strconv.ParseFloat(close_str, 64)
+	high_f64, err := strconv.ParseFloat(high_str[1:], 64)
 	if err != nil {
 		return nil, err
 	}
 
-	high_f64, err := strconv.ParseFloat(high_str, 64)
-	if err != nil {
-		return nil, err
-	}
-
-	low_f64, err := strconv.ParseFloat(low_str, 64)
+	low_f64, err := strconv.ParseFloat(low_str[1:], 64)
 	if err != nil {
 		return nil, err
 	}
