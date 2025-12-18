@@ -1,0 +1,18 @@
+FROM golang:1.21-alpine AS builder
+
+WORKDIR /app
+
+COPY go.mod ./
+RUN go mod download
+
+COPY . .
+
+RUN go build -o scheduler ./cmd/scheduler
+
+FROM alpine:latest
+
+WORKDIR /app
+
+COPY --from=builder /app/scheduler .
+
+ENTRYPOINT ["./scheduler"]
