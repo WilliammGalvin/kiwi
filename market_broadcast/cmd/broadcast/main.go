@@ -5,16 +5,23 @@ import (
 	"log"
 	"math"
 	"net"
+	"os"
 	"time"
 )
 
-const (
-	listenAddr = ":8080"
-	retryDelay = 2 * time.Second
-	packetSize = 48
-)
+func getEnv(key, defaultVal string) string {
+	if val := os.Getenv(key); val != "" {
+		return val
+	}
+
+	return defaultVal
+}
 
 func main() {
+	listenAddr := getEnv("LISTEN_ADDR", ":8080")
+	retryDelay := 2 * time.Second
+	packetSize := 48
+
 	var listener net.Listener
 	var err error
 
@@ -39,11 +46,11 @@ func main() {
 			continue
 		}
 
-		go handleClient(conn)
+		go handleClient(conn, packetSize)
 	}
 }
 
-func handleClient(conn net.Conn) {
+func handleClient(conn net.Conn, packetSize int) {
 	defer conn.Close()
 	clientAddr := conn.RemoteAddr().String()
 	log.Printf("Client connected: %s\n", clientAddr)
@@ -85,4 +92,3 @@ func readFull(conn net.Conn, buf []byte) (int, error) {
 
 	return total, nil
 }
-
