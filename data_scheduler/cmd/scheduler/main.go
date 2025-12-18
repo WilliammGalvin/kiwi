@@ -8,6 +8,7 @@ import (
 	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/data"
 	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/engine"
 	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/reader"
+	"github.com/WilliammGalvin/kiwi/data_scheduler/internal/transport"
 )
 
 var VerifiedCSVBarHeaders = []string{
@@ -17,6 +18,7 @@ var VerifiedCSVBarHeaders = []string{
 func main() {
 	dataDirPath := flag.String("dataDir", "./data", "Path to data directory")
 	interval := flag.Int("interval", 1000, "Broadcast interval delay in ms")
+	broadcastAddr := flag.String("broadcastAddr", "localhost:8080", "Market broadcast service address to connect via TCP")
 	flag.Parse()
 
 	broadcastIntervalMs := time.Duration(*interval) * time.Millisecond
@@ -54,6 +56,12 @@ func main() {
 		readers[sym] = r
 	}
 
+	defer func() {
+		for _, reader := range readers {
+			reader.CloseFile()
+		}
+	}()
+
 	log.Println("Stocks loaded:")
 	i := 1
 	for sym := range readers {
@@ -61,13 +69,10 @@ func main() {
 		i++
 	}
 
-	defer func() {
-		for _, reader := range readers {
-			reader.CloseFile()
-		}
-	}()
+	client := transport.NewBroadcastClient(*broadcastAddr)
+	client.Connect()
 
-	broadcastEngine := engine.NewBroadcastEngine(broadcastIntervalMs, readers)
-	broadcastEngine.Start()
-	defer broadcastEngine.Shutdown()
+	schedulerEngine := engine.NewSchedulerEngine(broadcastIntervalMs, readers, client)
+	schedulerEngine.Start()
+	defer schedulerEngine.Shutdown()
 }

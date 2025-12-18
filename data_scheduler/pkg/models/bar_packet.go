@@ -7,15 +7,15 @@ import (
 )
 
 type BarPacket struct {
-	Timestamp float64
+	Timestamp int64
 	Open      float64
 	Close     float64
 	High      float64
 	Low       float64
-	Volume    float64
+	Volume    int64
 }
 
-func NewBarPacket(timestamp, open, close, high, low, volume float64) *BarPacket {
+func NewBarPacket(timestamp int64, open, close, high, low float64, volume int64) *BarPacket {
 	return &BarPacket{
 		Timestamp: timestamp,
 		Open:      open,
